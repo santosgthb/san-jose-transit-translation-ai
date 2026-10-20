@@ -1,0 +1,631 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: reports
+    description: Transit issue reports
+  - name: dashboard
+    description: Department review dashboard
+  - name: submissions
+    description: Rider issue submissions and stored prototype responses
+  - name: access
+    description: Role-specific shared passcode access for reporting and review
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /access/status:
+    get:
+      operationId: getAccessStatus
+      tags: [access]
+      summary: Check whether this browser has unlocked the app
+      responses:
+        "200":
+          description: Access status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessStatus"
+        "503":
+          description: App access code is not configured
+  /access/unlock:
+    post:
+      operationId: unlockAccess
+      tags: [access]
+      summary: Unlock the reporting or saved-reports view with its four-digit code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessCodeInput"
+      responses:
+        "200":
+          description: App unlocked for this browser
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessStatus"
+        "400":
+          description: Invalid code format
+        "401":
+          description: Incorrect code
+        "429":
+          description: Too many incorrect attempts
+        "503":
+          description: App access code is not configured
+  /access/logout:
+    post:
+      operationId: logoutAccess
+      tags: [access]
+      summary: Clear this browser's access session
+      responses:
+        "200":
+          description: Access session cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessStatus"
+  /reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List transit issue reports
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [submitted, reviewing, assigned, resolved]
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransitReport"
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Submit a transit issue report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportInput"
+      responses:
+        "201":
+          description: Created report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitReport"
+  /reports/{id}:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Get a report by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitReport"
+        "404":
+          description: Report not found
+    patch:
+      operationId: updateReportStatus
+      tags: [reports]
+      summary: Update report status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportStatusInput"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitReport"
+  /reports/stats:
+    get:
+      operationId: getReportStats
+      tags: [dashboard]
+      summary: Get report dashboard statistics
+      responses:
+        "200":
+          description: Report statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportStats"
+  /reports/recent:
+    get:
+      operationId: getRecentReportActivity
+      tags: [dashboard]
+      summary: Get recent report activity
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportActivity"
+  /submissions:
+    get:
+      operationId: listSubmissions
+      tags: [submissions]
+      summary: List rider submissions, newest first
+      responses:
+        "200":
+          description: Rider submissions in reverse chronological order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RiderSubmission"
+    post:
+      operationId: createSubmission
+      tags: [submissions]
+      summary: Save a rider submission, grounded response and source snapshots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiderSubmissionInput"
+      responses:
+        "201":
+          description: Saved submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiderSubmission"
+        "409":
+          description: Input is a transit lookup and must not be saved as a report
+  /submissions/{id}/response-status:
+    patch:
+      operationId: updateSubmissionResponseStatus
+      tags: [submissions]
+      summary: Record whether a staff reply was sent (reviewer access only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionResponseStatus"
+      responses:
+        "200":
+          description: Updated submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiderSubmission"
+        "400":
+          description: Invalid status
+        "404":
+          description: Submission not found
+  /transit/request:
+    post:
+      operationId: resolveTransitRequest
+      tags: [submissions]
+      summary: Resolve a rider's question to verified station services and departures
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransitRequestInput"
+      responses:
+        "200":
+          description: Departures, a single clarification, or an explicit availability message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitRequestResult"
+        "400":
+          description: Invalid question
+  /transit/matches:
+    get:
+      operationId: getTransitMatches
+      tags: [submissions]
+      summary: Find verified VTA route and stop candidates using cached reference data
+      parameters:
+        - name: route
+          in: query
+          schema: { type: string, maxLength: 150 }
+        - name: stop
+          in: query
+          schema: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Candidate matches, without guessing an ambiguous stop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitMatches"
+        "400":
+          description: Invalid search
+  /transit/classify:
+    post:
+      operationId: classifyTransitInput
+      tags: [transit]
+      summary: Classify input before entering the report workflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransitRequestInput" }
+      responses:
+        "200":
+          description: Detected input intent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransitInputClassification" }
+        "400":
+          description: Invalid input
+components:
+  schemas:
+    TransitInputClassification:
+      type: object
+      properties:
+        intent: { type: string, enum: [transit_lookup, issue_report] }
+      required: [intent]
+    SubmissionResponseStatus:
+      type: object
+      properties:
+        staffResponseSent: { type: boolean }
+      required: [staffResponseSent]
+    TransitRequestInput:
+      type: object
+      properties:
+        message: { type: string, minLength: 1, maxLength: 1000 }
+        language: { $ref: "#/components/schemas/SubmissionLanguage" }
+        choice: { type: string, maxLength: 500 }
+        debug: { type: boolean }
+      required: [message, language]
+    TransitRequestChoice:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+      required: [id, label]
+    TransitDeparture:
+      type: object
+      properties:
+        dateTime: { type: string, format: date-time }
+        route: { type: string }
+        direction: { type: string }
+        source: { type: string, enum: [live, scheduled] }
+        retrievedAt: { type: string, format: date-time }
+      required: [dateTime, route, direction, source, retrievedAt]
+    TransitRequestResult:
+      type: object
+      properties:
+        status: { type: string, enum: [resolved, clarification, unavailable, no_departures] }
+        message: { type: string }
+        choices:
+          type: array
+          items: { $ref: "#/components/schemas/TransitRequestChoice" }
+        departures:
+          type: array
+          items: { $ref: "#/components/schemas/TransitDeparture" }
+        debug:
+          type: ["object", "null"]
+          additionalProperties: true
+      required: [status, message, choices, departures, debug]
+    TransitCandidate:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+      required: [id, name]
+    TransitMatches:
+      type: object
+      properties:
+        routes:
+          type: array
+          items: { $ref: "#/components/schemas/TransitCandidate" }
+        stops:
+          type: array
+          items: { $ref: "#/components/schemas/TransitCandidate" }
+        message: { type: string }
+      required: [routes, stops, message]
+    TransitSnapshot:
+      type: ["object", "null"]
+      additionalProperties: true
+    SubmissionLanguage:
+      type: string
+      enum: [vi, en, es, pa]
+    SubmissionDataSource:
+      type: string
+      enum: ["public dataset", "real document", "synthetic data"]
+    RiderSubmissionInput:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 1000
+        language:
+          $ref: "#/components/schemas/SubmissionLanguage"
+        imageName:
+          type: ["string", "null"]
+          maxLength: 255
+        issueCategory:
+          $ref: "#/components/schemas/ReportCategory"
+        route: { type: string, maxLength: 150 }
+        stop: { type: string, maxLength: 200 }
+        routeId: { type: string, maxLength: 100 }
+        stopId: { type: string, maxLength: 100 }
+      required: [description, language, imageName]
+    RiderSubmission:
+      type: object
+      properties:
+        id:
+          type: string
+        reference:
+          type: string
+        description:
+          type: string
+        language:
+          $ref: "#/components/schemas/SubmissionLanguage"
+        imageName:
+          type: ["string", "null"]
+        assistantResponse:
+          type: string
+        staffResponseSent:
+          type: boolean
+        dataSource:
+          $ref: "#/components/schemas/SubmissionDataSource"
+        submittedAt:
+          type: string
+          format: date-time
+        issueCategory: { type: string }
+        route: { type: string }
+        stop: { type: string }
+        routeId: { type: ["string", "null"] }
+        stopId: { type: ["string", "null"] }
+        operatorId: { type: ["string", "null"] }
+        routeName: { type: ["string", "null"] }
+        stopName: { type: ["string", "null"] }
+        inputIsSynthetic: { type: boolean }
+        inputSource: { type: string }
+        dataSourcesUsed:
+          type: array
+          items: { type: string }
+        sfBay511DataUsed: { type: boolean }
+        vtaOpenDataUsed: { type: boolean }
+        liveArrivalSnapshot: { $ref: "#/components/schemas/TransitSnapshot" }
+        serviceAlertSnapshot: { $ref: "#/components/schemas/TransitSnapshot" }
+        vtaOpenDataSnapshot: { $ref: "#/components/schemas/TransitSnapshot" }
+        vtaOpenDataDatasetTitle: { type: ["string", "null"] }
+        vtaOpenDataPublisher: { type: ["string", "null"] }
+        vtaOpenDataSourceUrl: { type: ["string", "null"] }
+        vtaOpenDataResourceUrl: { type: ["string", "null"] }
+        sourceRetrievedAt: { type: ["string", "null"], format: date-time }
+        transitNotes:
+          type: array
+          items: { type: string }
+        responseKind:
+          type: string
+          enum: [ai_generated, context_only, legacy_fixed]
+      required: [id, reference, description, language, imageName, assistantResponse, staffResponseSent, dataSource, submittedAt, issueCategory, route, stop, routeId, stopId, operatorId, routeName, stopName, inputIsSynthetic, inputSource, dataSourcesUsed, sfBay511DataUsed, vtaOpenDataUsed, liveArrivalSnapshot, serviceAlertSnapshot, vtaOpenDataSnapshot, vtaOpenDataDatasetTitle, vtaOpenDataPublisher, vtaOpenDataSourceUrl, vtaOpenDataResourceUrl, sourceRetrievedAt, transitNotes, responseKind]
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    AccessCodeInput:
+      type: object
+      properties:
+        passcode:
+          type: string
+          pattern: "^[0-9]{4}$"
+        role:
+          type: string
+          enum: [reporter, reviewer, classroom]
+          default: reporter
+      required: [passcode]
+    AccessStatus:
+      type: object
+      properties:
+        unlocked:
+          type: boolean
+        role:
+          type: [string, "null"]
+          enum: [reporter, reviewer, classroom, null]
+        reviewerAvailable:
+          type: boolean
+        classroomAvailable:
+          type: boolean
+      required: [unlocked, role, reviewerAvailable, classroomAvailable]
+    ReportStatus:
+      type: string
+      enum: [submitted, reviewing, assigned, resolved]
+    ReportCategory:
+      type: string
+      enum: [delay, cleanliness, safety, accessibility, staff, vehicle, other]
+    ReportAttachment:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [image, audio]
+        name:
+          type: string
+        mimeType:
+          type: string
+        dataUrl:
+          type: ["string", "null"]
+      required: [id, kind, name, mimeType, dataUrl]
+    TransitReport:
+      type: object
+      properties:
+        id:
+          type: string
+        reference:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          $ref: "#/components/schemas/ReportCategory"
+        route:
+          type: string
+        location:
+          type: string
+        happenedAt:
+          type: string
+        status:
+          $ref: "#/components/schemas/ReportStatus"
+        reporterName:
+          type: string
+        reporterContact:
+          type: ["string", "null"]
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportAttachment"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - reference
+        - title
+        - description
+        - category
+        - route
+        - location
+        - happenedAt
+        - status
+        - reporterName
+        - reporterContact
+        - attachments
+        - createdAt
+        - updatedAt
+    ReportInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 3
+        description:
+          type: string
+          minLength: 10
+        category:
+          $ref: "#/components/schemas/ReportCategory"
+        route:
+          type: string
+        location:
+          type: string
+        happenedAt:
+          type: string
+        reporterName:
+          type: string
+          minLength: 2
+        reporterContact:
+          type: ["string", "null"]
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportAttachment"
+      required: [title, description, category, route, location, happenedAt, reporterName, attachments]
+    ReportStatusInput:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/ReportStatus"
+      required: [status]
+    ReportStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        submitted:
+          type: integer
+        reviewing:
+          type: integer
+        assigned:
+          type: integer
+        resolved:
+          type: integer
+        thisWeek:
+          type: integer
+        averageResponseHours:
+          type: number
+      required: [total, submitted, reviewing, assigned, resolved, thisWeek, averageResponseHours]
+    ReportActivity:
+      type: object
+      properties:
+        id:
+          type: string
+        reportId:
+          type: string
+        reference:
+          type: string
+        action:
+          type: string
+        detail:
+          type: string
+        createdAt:
+          type: string
+      required: [id, reportId, reference, action, detail, createdAt]
+

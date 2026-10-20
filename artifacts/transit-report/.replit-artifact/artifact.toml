@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Transit Report"
+description = "A public transit issue reporting app where riders can submit text, images, and voice notes, with a staff review view for triaging and resolving reports."
+version = "1.0.0"
+id = "artifacts/transit-report"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18807
+
+[services.development]
+run = "pnpm --filter @workspace/transit-report run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/transit-report", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/transit-report/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18807"
+BASE_PATH = "/"
